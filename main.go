@@ -19,7 +19,7 @@ const (
 
 // Company структура с данными, которые программа собирает про компанию
 type Company struct {
-	name        string // название компани
+	name        string // название компании
 	website     string // веб-сайт компании
 	workUA      string // ссылка на work.ua компании
 	description string // короткое описание компании
