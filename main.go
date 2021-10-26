@@ -17,18 +17,23 @@ const (
 	xmlString   string = "/html/body/section/div/div[3]"
 )
 
-// Company ...
+// Company структура с данными, которые программа собирает про компанию
 type Company struct {
-	name        string
-	website     string
-	workUA      string
-	description string
-	placesCount int
+	name        string // название компани
+	website     string // веб-сайт компании
+	workUA      string // ссылка на work.ua компании
+	description string // короткое описание компании
+	placesCount int    // количество вакансий в Киеве
 }
 
-// NewCompany ...
-func NewCompany(name, website, workUA, descr string) Company {
+// IncrementPlaces ...
+func (c Company) IncrementPlaces() Company {
+	c.placesCount++
+	return c
+}
 
+// NewCompany функция-генератор новой компании
+func NewCompany(name, website, workUA, descr string) Company {
 	log.Printf("creating new company: %v\n", name)
 	return Company{
 		name:        name,
@@ -38,18 +43,22 @@ func NewCompany(name, website, workUA, descr string) Company {
 	}
 }
 
-func (c Company) incrementPlaces() Company {
-	c.placesCount++
-	return c
-}
-
 func main() {
+
+	// companies карта в которой будут хранитья компании
+	// в роли ключа выступает ссылка на work.ua
 	var companies map[string]Company = map[string]Company{}
 
 	for page := 1; page <= 127; page++ {
 		log.Printf("new loop: page %v\n", page)
+
+		// pageCollector собирает с страницы-списка ссылки на компании
 		pageCollector := colly.NewCollector()
+
+		// companyCollector собирает со страницы компании всю информацию
 		companyCollector := colly.NewCollector()
+
+		// cityCollector собирает информацию про доступные вакансии и города
 		cityCollector := colly.NewCollector()
 
 		companyCollector.OnXML("/html/body/section/div/div/div[1]/div[2]", func(e *colly.XMLElement) {
@@ -70,7 +79,7 @@ func main() {
 
 		cityCollector.OnHTML("div.card.card-hover.card-visited.wordwrap.job-link", func(e *colly.HTMLElement) {
 			if strings.Contains(e.ChildText("span"), "Киев") {
-				companies[e.Request.URL.String()] = companies[e.Request.URL.String()].incrementPlaces()
+				companies[e.Request.URL.String()] = companies[e.Request.URL.String()].IncrementPlaces()
 			}
 		})
 
@@ -84,7 +93,6 @@ func main() {
 		})
 
 		pageCollector.Visit(listLink + strconv.Itoa(page))
-
 	}
 
 	f := excelize.NewFile()
@@ -112,5 +120,4 @@ func main() {
 	if err := f.SaveAs("Book1.xlsx"); err != nil {
 		log.Println(err)
 	}
-
 }
