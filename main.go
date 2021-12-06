@@ -15,6 +15,11 @@ const (
 	listLink    string = "https://www.work.ua/ru/jobs/by-company/by-industry/it/?page="
 	companyLink string = "https://www.work.ua"
 	xmlString   string = "/html/body/section/div/div[3]"
+
+	xlsxName   string = "Book1.xlsx"
+	timeLayout string = "02-01-2006 15:04:05"
+
+	workuaMaxPage int = 126
 )
 
 // Company структура с данными, которые программа собирает про компанию
@@ -26,30 +31,127 @@ type Company struct {
 	placesCount int    // количество вакансий в Киеве
 }
 
-// IncrementPlaces ...
+// IncrementPlaces добавляет 1 к счетчику вакансий
 func (c Company) IncrementPlaces() Company {
 	c.placesCount++
 	return c
 }
 
 // NewCompany функция-генератор новой компании
-func NewCompany(name, website, workUA, descr string) Company {
+func NewCompany(name, website, workUA, descr string, places int) Company {
 	log.Printf("creating new company: %v\n", name)
 	return Company{
 		name:        name,
 		website:     website,
 		workUA:      workUA,
 		description: descr,
+		placesCount: places,
 	}
 }
 
-func main() {
+// загружает в карту уже спаршенные компании
+func loadCompanies(companies map[string]Company) {
 
-	// companies карта в которой будут хранитья компании
-	// в роли ключа выступает ссылка на work.ua
-	var companies map[string]Company = map[string]Company{}
+	f, err := excelize.OpenFile(xlsxName)
+	if err != nil {
+		log.Println(err)
+	}
 
-	for page := 1; page <= 127; page++ {
+	log.Println("Loading companies..")
+
+	sheetList := f.GetSheetList()
+
+	var maxIndex int
+	for _, sheet := range sheetList {
+		if f.GetSheetIndex(sheet) > maxIndex {
+			maxIndex = f.GetSheetIndex(sheet)
+		}
+	}
+
+	sheetName := f.GetSheetName(maxIndex)
+
+	for i := 2; ; i++ {
+		name, err := f.GetCellValue(sheetName, fmt.Sprintf("A%v", i))
+		if err != nil {
+			log.Println(err)
+		}
+
+		website, err := f.GetCellValue(sheetName, fmt.Sprintf("B%v", i))
+		if err != nil {
+			log.Println(err)
+		}
+
+		workUA, err := f.GetCellValue(sheetName, fmt.Sprintf("C%v", i))
+		if err != nil {
+			log.Println(err)
+		}
+
+		description, err := f.GetCellValue(sheetName, fmt.Sprintf("D%v", i))
+		if err != nil {
+			log.Println(err)
+		}
+
+		placesCount, err := f.GetCellValue(sheetName, fmt.Sprintf("E%v", i))
+		if err != nil {
+			log.Println(err)
+		}
+
+		if name == "" || website == "" || workUA == "" || description == "" || placesCount == "" {
+			log.Println("Loading complete.")
+			return
+		}
+
+		placesCountInt, err := strconv.Atoi(placesCount)
+		if err != nil {
+			log.Println(err)
+		}
+
+		companies[workUA] = NewCompany(
+			name,
+			website,
+			workUA,
+			description,
+			placesCountInt)
+
+	}
+}
+
+func saveCompanies(companies map[string]Company) {
+	f, err := excelize.OpenFile(xlsxName)
+	if err != nil {
+		log.Println(err)
+	}
+
+	sheetName := time.Now().Format(timeLayout)
+
+	index := f.NewSheet(sheetName)
+	f.SetCellValue(sheetName, "A1", "Company Name")
+	f.SetCellValue(sheetName, "B1", "Work.ua")
+	f.SetCellValue(sheetName, "C1", "Website")
+	f.SetCellValue(sheetName, "D1", "Company Description")
+	f.SetCellValue(sheetName, "E1", "Places")
+	counter := 2
+
+	for _, company := range companies {
+		if company.placesCount != 0 && company.name != "" && !strings.Contains(company.name, "ФОП") && company.website != "" {
+			f.SetCellValue(sheetName, fmt.Sprintf("A%v", counter), company.name)
+			f.SetCellValue(sheetName, fmt.Sprintf("B%v", counter), company.workUA)
+			f.SetCellValue(sheetName, fmt.Sprintf("C%v", counter), company.website)
+			f.SetCellValue(sheetName, fmt.Sprintf("D%v", counter), company.description)
+			f.SetCellValue(sheetName, fmt.Sprintf("E%v", counter), company.placesCount)
+			counter++
+		}
+	}
+
+	f.SetActiveSheet(index)
+
+	if err := f.SaveAs(xlsxName); err != nil {
+		log.Println(err)
+	}
+}
+
+func parseCompanies(companies map[string]Company) {
+	for page := 1; page <= workuaMaxPage; page++ {
 		log.Printf("new loop: page %v\n", page)
 
 		// pageCollector собирает с страницы-списка ссылки на компании
@@ -62,25 +164,37 @@ func main() {
 		cityCollector := colly.NewCollector()
 
 		companyCollector.OnXML("/html/body/section/div/div/div[1]/div[2]", func(e *colly.XMLElement) {
+
+			for company := range companies {
+				if companies[company].name == e.ChildText("div/h1") {
+					return
+				}
+			}
+
 			companies[e.Request.URL.String()] = NewCompany(
 				e.ChildText("div/h1"),
 				e.ChildAttr("div/div/div/p/span/a", "href"),
 				e.Request.URL.String(),
-				fmt.Sprintf("%v %v", e.ChildText("div/p[1]"), e.ChildText("div/p[2]")))
+				fmt.Sprintf("%v %v", e.ChildText("div/p[1]"), e.ChildText("div/p[2]")),
+				0)
 		})
 
 		pageCollector.OnXML(fmt.Sprintf(xmlString), func(e *colly.XMLElement) {
 			for companyCard := 2; companyCard <= 23; companyCard++ {
+
 				link := companyLink + e.ChildAttr(fmt.Sprintf("div[%v]/div/div[2]/h2/a", companyCard), "href")
+
 				companyCollector.Visit(link)
 				cityCollector.Visit(link)
 			}
 		})
 
 		cityCollector.OnHTML("div.card.card-hover.card-visited.wordwrap.job-link", func(e *colly.HTMLElement) {
+
 			if strings.Contains(e.ChildText("span"), "Киев") {
 				companies[e.Request.URL.String()] = companies[e.Request.URL.String()].IncrementPlaces()
 			}
+
 		})
 
 		pageCollector.OnRequest(func(r *colly.Request) {
@@ -95,29 +209,14 @@ func main() {
 		pageCollector.Visit(listLink + strconv.Itoa(page))
 	}
 
-	f := excelize.NewFile()
-	index := f.NewSheet("Sheet1")
-	f.SetCellValue("Sheet1", "A1", "Company Name")
-	f.SetCellValue("Sheet1", "B1", "Work.ua")
-	f.SetCellValue("Sheet1", "C1", "Website")
-	f.SetCellValue("Sheet1", "D1", "Company Description")
-	f.SetCellValue("Sheet1", "E1", "Places")
-	counter := 2
+}
 
-	for _, company := range companies {
-		if company.placesCount != 0 && company.name != "" && !strings.Contains(company.name, "ФОП") && company.website != "" {
-			f.SetCellValue("Sheet1", fmt.Sprintf("A%v", counter), company.name)
-			f.SetCellValue("Sheet1", fmt.Sprintf("B%v", counter), company.workUA)
-			f.SetCellValue("Sheet1", fmt.Sprintf("C%v", counter), company.website)
-			f.SetCellValue("Sheet1", fmt.Sprintf("D%v", counter), company.description)
-			f.SetCellValue("Sheet1", fmt.Sprintf("E%v", counter), company.placesCount)
-			counter++
-		}
-	}
+func main() {
+	// companies карта в которой будут хранитья компании
+	// в роли ключа выступает ссылка на work.ua
+	var companies map[string]Company = map[string]Company{}
 
-	f.SetActiveSheet(index)
-
-	if err := f.SaveAs("Book1.xlsx"); err != nil {
-		log.Println(err)
-	}
+	loadCompanies(companies)
+	parseCompanies(companies)
+	saveCompanies(companies)
 }
