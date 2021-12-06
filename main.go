@@ -19,7 +19,7 @@ const (
 	xlsxName   string = "Book1.xlsx"
 	timeLayout string = "02-01-2006 15:04:05"
 
-	workuaMaxPage int = 126
+	workuaMaxPage int = 1
 )
 
 // Company структура с данными, которые программа собирает про компанию
@@ -29,6 +29,7 @@ type Company struct {
 	workUA      string // ссылка на work.ua компании
 	description string // короткое описание компании
 	placesCount int    // количество вакансий в Киеве
+	used        bool
 }
 
 // IncrementPlaces добавляет 1 к счетчику вакансий
@@ -38,7 +39,7 @@ func (c Company) IncrementPlaces() Company {
 }
 
 // NewCompany функция-генератор новой компании
-func NewCompany(name, website, workUA, descr string, places int) Company {
+func NewCompany(name, website, workUA, descr string, places int, used bool) Company {
 	log.Printf("creating new company: %v\n", name)
 	return Company{
 		name:        name,
@@ -46,6 +47,7 @@ func NewCompany(name, website, workUA, descr string, places int) Company {
 		workUA:      workUA,
 		description: descr,
 		placesCount: places,
+		used:        used,
 	}
 }
 
@@ -61,58 +63,51 @@ func loadCompanies(companies map[string]Company) {
 
 	sheetList := f.GetSheetList()
 
-	var maxIndex int
 	for _, sheet := range sheetList {
-		if f.GetSheetIndex(sheet) > maxIndex {
-			maxIndex = f.GetSheetIndex(sheet)
+		for i := 2; ; i++ {
+			name, err := f.GetCellValue(sheet, fmt.Sprintf("A%v", i))
+			if err != nil {
+				log.Println(err)
+			}
+
+			workUA, err := f.GetCellValue(sheet, fmt.Sprintf("B%v", i))
+			if err != nil {
+				log.Println(err)
+			}
+
+			website, err := f.GetCellValue(sheet, fmt.Sprintf("C%v", i))
+			if err != nil {
+				log.Println(err)
+			}
+
+			description, err := f.GetCellValue(sheet, fmt.Sprintf("D%v", i))
+			if err != nil {
+				log.Println(err)
+			}
+
+			placesCount, err := f.GetCellValue(sheet, fmt.Sprintf("E%v", i))
+			if err != nil {
+				log.Println(err)
+			}
+
+			if name == "" || website == "" || workUA == "" || description == "" || placesCount == "" {
+				log.Println("Loading complete.")
+				return
+			}
+
+			placesCountInt, err := strconv.Atoi(placesCount)
+			if err != nil {
+				log.Println(err)
+			}
+
+			companies[workUA] = NewCompany(
+				name,
+				website,
+				workUA,
+				description,
+				placesCountInt,
+				true)
 		}
-	}
-
-	sheetName := f.GetSheetName(maxIndex)
-
-	for i := 2; ; i++ {
-		name, err := f.GetCellValue(sheetName, fmt.Sprintf("A%v", i))
-		if err != nil {
-			log.Println(err)
-		}
-
-		website, err := f.GetCellValue(sheetName, fmt.Sprintf("B%v", i))
-		if err != nil {
-			log.Println(err)
-		}
-
-		workUA, err := f.GetCellValue(sheetName, fmt.Sprintf("C%v", i))
-		if err != nil {
-			log.Println(err)
-		}
-
-		description, err := f.GetCellValue(sheetName, fmt.Sprintf("D%v", i))
-		if err != nil {
-			log.Println(err)
-		}
-
-		placesCount, err := f.GetCellValue(sheetName, fmt.Sprintf("E%v", i))
-		if err != nil {
-			log.Println(err)
-		}
-
-		if name == "" || website == "" || workUA == "" || description == "" || placesCount == "" {
-			log.Println("Loading complete.")
-			return
-		}
-
-		placesCountInt, err := strconv.Atoi(placesCount)
-		if err != nil {
-			log.Println(err)
-		}
-
-		companies[workUA] = NewCompany(
-			name,
-			website,
-			workUA,
-			description,
-			placesCountInt)
-
 	}
 }
 
@@ -133,7 +128,7 @@ func saveCompanies(companies map[string]Company) {
 	counter := 2
 
 	for _, company := range companies {
-		if company.placesCount != 0 && company.name != "" && !strings.Contains(company.name, "ФОП") && company.website != "" {
+		if company.placesCount != 0 && company.name != "" && !strings.Contains(company.name, "ФОП") && company.website != "" && !company.used {
 			f.SetCellValue(sheetName, fmt.Sprintf("A%v", counter), company.name)
 			f.SetCellValue(sheetName, fmt.Sprintf("B%v", counter), company.workUA)
 			f.SetCellValue(sheetName, fmt.Sprintf("C%v", counter), company.website)
@@ -165,18 +160,24 @@ func parseCompanies(companies map[string]Company) {
 
 		companyCollector.OnXML("/html/body/section/div/div/div[1]/div[2]", func(e *colly.XMLElement) {
 
+			var flag bool = true
+
 			for company := range companies {
 				if companies[company].name == e.ChildText("div/h1") {
-					return
+					log.Printf("Found same company: %v\n", companies[company].name)
+					flag = false
 				}
 			}
 
-			companies[e.Request.URL.String()] = NewCompany(
-				e.ChildText("div/h1"),
-				e.ChildAttr("div/div/div/p/span/a", "href"),
-				e.Request.URL.String(),
-				fmt.Sprintf("%v %v", e.ChildText("div/p[1]"), e.ChildText("div/p[2]")),
-				0)
+			if flag {
+				companies[e.Request.URL.String()] = NewCompany(
+					e.ChildText("div/h1"),
+					e.ChildAttr("div/div/div/p/span/a", "href"),
+					e.Request.URL.String(),
+					fmt.Sprintf("%v %v", e.ChildText("div/p[1]"), e.ChildText("div/p[2]")),
+					0,
+					false)
+			}
 		})
 
 		pageCollector.OnXML(fmt.Sprintf(xmlString), func(e *colly.XMLElement) {
