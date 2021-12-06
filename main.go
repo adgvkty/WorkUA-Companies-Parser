@@ -94,7 +94,7 @@ func loadCompanies(companies map[string]Company) {
 
 			if name == "" || website == "" || workUA == "" || description == "" || placesCount == "" {
 				log.Println("loading complete")
-				return
+				break
 			}
 
 			placesCountInt, err := strconv.Atoi(placesCount)
