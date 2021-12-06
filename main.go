@@ -16,7 +16,7 @@ const (
 	companyLink string = "https://www.work.ua"
 	xmlString   string = "/html/body/section/div/div[3]"
 
-	xlsxName   string = "Book1.xlsx"
+	xlsxName   string = "companies.xlsx"
 	timeLayout string = "02-01-2006 15:04:05"
 
 	workuaMaxPage int = 1
@@ -40,7 +40,9 @@ func (c Company) IncrementPlaces() Company {
 
 // NewCompany функция-генератор новой компании
 func NewCompany(name, website, workUA, descr string, places int, used bool) Company {
-	log.Printf("creating new company: %v\n", name)
+	if !used {
+		log.Printf("creating new company: %v\n", name)
+	}
 	return Company{
 		name:        name,
 		website:     website,
@@ -59,7 +61,7 @@ func loadCompanies(companies map[string]Company) {
 		log.Println(err)
 	}
 
-	log.Println("Loading companies..")
+	log.Println("loading companies..")
 
 	sheetList := f.GetSheetList()
 
@@ -91,7 +93,7 @@ func loadCompanies(companies map[string]Company) {
 			}
 
 			if name == "" || website == "" || workUA == "" || description == "" || placesCount == "" {
-				log.Println("Loading complete.")
+				log.Println("loading complete")
 				return
 			}
 
@@ -147,7 +149,7 @@ func saveCompanies(companies map[string]Company) {
 
 func parseCompanies(companies map[string]Company) {
 	for page := 1; page <= workuaMaxPage; page++ {
-		log.Printf("new loop: page %v\n", page)
+		log.Printf("parsing new page: #%v\n", page)
 
 		// pageCollector собирает с страницы-списка ссылки на компании
 		pageCollector := colly.NewCollector()
@@ -164,7 +166,7 @@ func parseCompanies(companies map[string]Company) {
 
 			for company := range companies {
 				if companies[company].name == e.ChildText("div/h1") {
-					log.Printf("Found same company: %v\n", companies[company].name)
+					log.Printf("found same company: %v\n", companies[company].name)
 					flag = false
 				}
 			}
@@ -200,7 +202,7 @@ func parseCompanies(companies map[string]Company) {
 
 		pageCollector.OnRequest(func(r *colly.Request) {
 			time.Sleep(5 * time.Second)
-			log.Println("Visiting", r.URL)
+			log.Println("visiting", r.URL)
 		})
 
 		pageCollector.OnError(func(r *colly.Response, e error) {
@@ -216,8 +218,18 @@ func main() {
 	// companies карта в которой будут хранитья компании
 	// в роли ключа выступает ссылка на work.ua
 	var companies map[string]Company = map[string]Company{}
-
-	loadCompanies(companies)
-	parseCompanies(companies)
-	saveCompanies(companies)
+	for {
+		fmt.Println("Добро пожаловать в COMPANY-PARSER 3000-EXTREME ULTRA\n\nТребования к использованию:\n\t - подключение к сети Интернет\n\t - наличие документа companies.xlsx в директории с программой\n\nПри возникновении любых ошибок писать в tg - @adgvkty\n©2021 Adgvkty Inc\n\nВы согласились и узнали? (Y/N):")
+		var response string
+		fmt.Scanf("%s", &response)
+		if response == "Y" || response == "y" {
+			log.Println("starting...")
+			loadCompanies(companies)
+			parseCompanies(companies)
+			saveCompanies(companies)
+			return
+		} else if response == "N" {
+			return
+		}
+	}
 }
