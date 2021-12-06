@@ -19,7 +19,7 @@ const (
 	xlsxName   string = "companies.xlsx"
 	timeLayout string = "02-01-2006 15:04:05"
 
-	workuaMaxPage int = 1
+	workuaMaxPage int = 126
 )
 
 // Company структура с данными, которые программа собирает про компанию
