@@ -119,25 +119,31 @@ func saveCompanies(companies map[string]Company) {
 		log.Println(err)
 	}
 
+	// название листа генерируется из текущего времени
 	sheetName := time.Now().Format(timeLayout)
 
 	index := f.NewSheet(sheetName)
+
 	f.SetCellValue(sheetName, "A1", "Company Name")
 	f.SetCellValue(sheetName, "B1", "Work.ua")
 	f.SetCellValue(sheetName, "C1", "Website")
 	f.SetCellValue(sheetName, "D1", "Company Description")
 	f.SetCellValue(sheetName, "E1", "Places")
-	counter := 2
 
+	counter := 2
 	for _, company := range companies {
+
 		if company.placesCount != 0 && company.name != "" && !strings.Contains(company.name, "ФОП") && company.website != "" && !company.used {
+
 			f.SetCellValue(sheetName, fmt.Sprintf("A%v", counter), company.name)
 			f.SetCellValue(sheetName, fmt.Sprintf("B%v", counter), company.workUA)
 			f.SetCellValue(sheetName, fmt.Sprintf("C%v", counter), company.website)
 			f.SetCellValue(sheetName, fmt.Sprintf("D%v", counter), company.description)
 			f.SetCellValue(sheetName, fmt.Sprintf("E%v", counter), company.placesCount)
+
 			counter++
 		}
+
 	}
 
 	f.SetActiveSheet(index)
@@ -145,6 +151,7 @@ func saveCompanies(companies map[string]Company) {
 	if err := f.SaveAs(xlsxName); err != nil {
 		log.Println(err)
 	}
+
 }
 
 func parseCompanies(companies map[string]Company) {
